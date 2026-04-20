@@ -4,9 +4,11 @@ import io.opentelemetry.kotlin.attributes.AttributeContainer
 import io.opentelemetry.kotlin.attributes.AttributesModel
 import io.opentelemetry.kotlin.context.Context
 import io.opentelemetry.kotlin.factory.SpanFactory
+import io.opentelemetry.kotlin.platformLog
 import io.opentelemetry.kotlin.tracing.SpanKind
 import io.opentelemetry.kotlin.tracing.model.SpanLink
 import io.opentelemetry.kotlin.tracing.sampling.SamplingResult.Decision
+import kotlin.concurrent.Volatile
 import kotlin.math.max
 
 internal class ProbabilitySampler(private val spanFactory: SpanFactory, ratio: Double) : Sampler {
@@ -14,6 +16,8 @@ internal class ProbabilitySampler(private val spanFactory: SpanFactory, ratio: D
     private companion object {
         private const val MAX_THRESHOLD: Long = 1L shl 56
         private const val MIN_RATIO: Double = 1.0 / MAX_THRESHOLD
+        @Volatile
+        private var compatibilityWarningLogged = false
     }
 
     init {
@@ -37,7 +41,17 @@ internal class ProbabilitySampler(private val spanFactory: SpanFactory, ratio: D
         val otelTraceState = OtelTraceState.parse(traceState.get("ot"))
         otelTraceState.setThreshold(max(otelTraceState.th ?: 0L, rejectionThreshold))
 
-        val randomness = otelTraceState.rv ?: randomnessFromTraceId(traceId)
+        val randomness: Long
+        if (otelTraceState.rv != null) {
+            randomness = otelTraceState.rv!!
+        } else {
+            if (parentSpanContext.isValid && !parentSpanContext.traceFlags.isRandom && !compatibilityWarningLogged) {
+                compatibilityWarningLogged = true
+                platformLog("WARNING: The ProbabilitySampler sampler is presuming TraceIDs are random and expects the Trace random flag to be set in confirmation.")
+            }
+            randomness = randomnessFromTraceId(traceId)
+        }
+
         val decision = if (randomness >= rejectionThreshold) {
             Decision.RECORD_AND_SAMPLE
         } else {
