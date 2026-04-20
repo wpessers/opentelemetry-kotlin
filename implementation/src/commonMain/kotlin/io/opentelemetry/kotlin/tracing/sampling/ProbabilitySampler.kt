@@ -44,15 +44,15 @@ internal class ProbabilitySampler(private val spanFactory: SpanFactory, ratio: D
         val otelTraceState = OtelTraceState.parse(traceState.get("ot"))
         otelTraceState.setThreshold(max(otelTraceState.th ?: 0L, rejectionThreshold))
 
-        val randomness: Long
-        if (otelTraceState.rv != null) {
-            randomness = otelTraceState.rv!!
+        val explicitRandomness = otelTraceState.rv
+        val randomness = if (explicitRandomness != null) {
+            explicitRandomness
         } else {
             if (parentSpanContext.isValid && !parentSpanContext.traceFlags.isRandom && !compatibilityWarningLogged) {
                 compatibilityWarningLogged = true
                 platformLog(COMPATIBILITY_WARNING)
             }
-            randomness = randomnessFromTraceId(traceId)
+            randomnessFromTraceId(traceId)
         }
 
         val decision = if (randomness >= rejectionThreshold) {
@@ -77,5 +77,6 @@ internal class ProbabilitySampler(private val spanFactory: SpanFactory, ratio: D
             (byteFromBase16(traceId[28], traceId[29]) shl 8) or
             byteFromBase16(traceId[30], traceId[31])
 
-    private fun byteFromBase16(first: Char, second: Char): Long = ((first.digitToInt(16) shl 4) or second.digitToInt(16)).toLong()
+    private fun byteFromBase16(first: Char, second: Char): Long =
+        ((first.digitToInt(16) shl 4) or second.digitToInt(16)).toLong()
 }
