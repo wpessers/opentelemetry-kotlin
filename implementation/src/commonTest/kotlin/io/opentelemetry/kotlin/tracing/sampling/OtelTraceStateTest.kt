@@ -32,6 +32,30 @@ internal class OtelTraceStateTest {
     }
 
     @Test
+    fun parsesSingleCharThreshold() {
+        val ot = OtelTraceState.parse("th:0")
+        assertEquals(0L, ot.th)
+    }
+
+    @Test
+    fun parsesFullLengthThreshold() {
+        val ot = OtelTraceState.parse("th:ffffffffffffff")
+        assertEquals(0xffffffffffffff, ot.th)
+    }
+
+    @Test
+    fun skipsEntriesWithoutColon() {
+        val ot = OtelTraceState.parse("badentry;rv:123456789abcde")
+        assertEquals(0x123456789abcde, ot.rv)
+    }
+
+    @Test
+    fun keepsFirstValueForDuplicateKeys() {
+        val ot = OtelTraceState.parse("rv:11111111111111;rv:22222222222222")
+        assertEquals(0x11111111111111, ot.rv)
+    }
+
+    @Test
     fun encodesThreshold() {
         val ot = OtelTraceState.parse("")
         ot.setThreshold(0x123abc)
@@ -59,6 +83,13 @@ internal class OtelTraceStateTest {
         assertFailsWith(IllegalArgumentException::class) {
             ot.setThreshold(0xffffffffffffff + 1)
         }
+    }
+
+    @Test
+    fun acceptsMaxThreshold() {
+        val ot = OtelTraceState.parse("")
+        ot.setThreshold(0xffffffffffffff)
+        assertEquals("th:ffffffffffffff", ot.encode())
     }
 
     @Test
